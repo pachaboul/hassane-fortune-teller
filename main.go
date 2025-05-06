@@ -13,20 +13,35 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+var (
+	playerSurname string
+	content       *fyne.Container
+	err           error
+)
+
 func main() {
 	a := app.New()
 	w := a.NewWindow("🔮 Hassane's Fortune Teller")
 
+	backend.InitDB()
+
 	surnameEntry := widget.NewEntry()
 	surnameEntry.SetPlaceHolder("Enter your surname here...")
+	surnameEntry.OnChanged = func(s string) {
+		playerSurname = strings.TrimSpace(s)
+		fmt.Println("DEBUG: OnChanged playerSurname =", playerSurname)
+	}
+
+	// Entry for manual fortune
+	manualFortuneEntry := widget.NewMultiLineEntry()
+	manualFortuneEntry.SetPlaceHolder("Or type your own fortune here...")
 
 	fortuneLabel := widget.NewLabel("Your fortune will appear here...")
-
-	var playerSurname string
 
 	// Button to start the game
 	startButton := widget.NewButton("Start Fortune Teller", func() {
 		playerSurname = surnameEntry.Text
+		fmt.Println("DEBUG: playerSurname =", playerSurname)
 		if playerSurname == "" {
 			fortuneLabel.SetText("❗ Please enter your surname first!")
 			return
@@ -76,6 +91,42 @@ func main() {
 		}()
 	})
 
+	// Save to DB Button
+	addToDBButton := widget.NewButton("💾 Add Fortune to PostgreSQL DB", func() {
+		fmt.Println("DEBUG: playerSurname in save =", playerSurname)
+
+		if playerSurname == "" {
+			fortuneLabel.SetText("❗ Please enter your surname first!")
+			return
+		}
+
+		fortuneText := strings.TrimSpace(manualFortuneEntry.Text)
+		if fortuneText == "" {
+			fortuneText = strings.TrimSpace(fortuneLabel.Text)
+		}
+
+		if fortuneText == "" || strings.Contains(fortuneText, "will appear here") {
+			fortuneLabel.SetText("❗ No valid fortune to save!")
+			return
+		}
+
+		for _, prefix := range []string{"🔮 ", "✅ ", "🧠 ", "❗ "} {
+			if strings.HasPrefix(fortuneText, prefix) {
+				fortuneText = strings.TrimPrefix(fortuneText, prefix)
+				break
+			}
+		}
+
+		cleanFortune := strings.TrimSpace(fortuneText)
+
+		if err := backend.InsertFortune(playerSurname, cleanFortune); err != nil {
+			fortuneLabel.SetText("❌ DB Error: " + err.Error())
+			return
+		}
+
+		fortuneLabel.SetText("✅ Fortune saved to PostgreSQL DB for " + playerSurname + "!")
+	})
+
 	// Button to stop, show graph, stats, and exit
 	stopButton := widget.NewButton("❌ Stop and Show Graph", func() {
 		backend.GenerateGraph(playerSurname)
@@ -118,13 +169,44 @@ func main() {
 		))
 	})
 
+	viewAllButton := widget.NewButton("📜 View All Fortunes", func() {
+		all, err := backend.GetAllFortunes() // ✅ declare `all` here
+		if err != nil {
+			fortuneLabel.SetText("❌ DB Error: " + err.Error())
+			return
+		}
+
+		if len(all) == 0 {
+			fortuneLabel.SetText("📭 No fortunes found yet.")
+			return
+		}
+
+		allFortunesView := widget.NewMultiLineEntry()
+		allFortunesView.SetText(strings.Join(all, "\n"))
+		allFortunesView.Disable()
+		allFortunesView.Wrapping = fyne.TextWrapWord
+
+		backButton := widget.NewButton("🔙 Back", func() {
+			w.SetContent(content)
+		})
+
+		w.SetContent(container.NewVBox(
+			widget.NewLabel("📜 All Saved Fortunes"),
+			allFortunesView,
+			backButton,
+		))
+	})
+
 	// Layout
-	content := container.NewVBox(
+	content = container.NewVBox(
 		widget.NewLabel("🎯 Welcome to Hassane's Fortune Teller! 🎯"),
 		surnameEntry,
+		manualFortuneEntry,
 		startButton,
+		addToDBButton,
 		aiFortuneButton,
 		getFortuneButton,
+		viewAllButton,
 		fortuneLabel,
 		stopButton,
 	)

@@ -101,7 +101,7 @@ go run .
 
 ## 👌 Author
 
-- **Hassane Cissé**  
+- **Aboul Hassane Cissé**  
   [@pachaboul](https://github.com/pachaboul)
 
 ---
